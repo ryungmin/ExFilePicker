@@ -76,7 +76,82 @@ public class ExFilePickerActivity extends Activity implements OnLongClickListene
 	private boolean mIsMultiChoice = false;
 	private ImageButton mChangeView;
 	private TextView mHeaderTitle;
-	
+	protected boolean mStandaloneMode = false;
+
+	protected void setStandaloneMode(boolean standaloneMode){
+		mStandaloneMode = standaloneMode;
+	}
+	protected File getCurrentDirectory(){
+		return mCurrentDirectory;
+	}
+	protected ArrayList<String> getSelected(){
+		return mSelected;
+	}
+
+	// bundle
+	private String startPath = null;
+
+	private boolean disableNewFolderButton = false;
+	private boolean disableSortButton = false;
+	private boolean enableQuitButton = false;
+
+	@Override
+	protected void onSaveInstanceState(Bundle outState) {
+		super.onSaveInstanceState(outState);
+
+		outState.putBoolean(ExFilePicker.SET_ONLY_ONE_ITEM, mOptOnlyOneItem);
+
+
+		if(mOptFilterExclude != null) {
+			outState.putStringArray(ExFilePicker.SET_FILTER_EXCLUDE, mOptFilterExclude.toArray(new String[mOptFilterExclude.size()]));
+		}
+		if(mOptFilterListed != null) {
+			outState.putStringArray(ExFilePicker.SET_FILTER_LISTED, mOptFilterListed.toArray(new String[mOptFilterListed.size()]));
+		}
+
+		outState.putInt(ExFilePicker.SET_CHOICE_TYPE, mOptChoiceType);
+		outState.putInt(ExFilePicker.SET_SORT_TYPE, mOptSortType);
+		outState.putString(ExFilePicker.SET_START_DIRECTORY, startPath);
+
+		outState.putBoolean(ExFilePicker.DISABLE_NEW_FOLDER_BUTTON, disableNewFolderButton);
+		outState.putBoolean(ExFilePicker.DISABLE_SORT_BUTTON, disableSortButton);
+		outState.putBoolean(ExFilePicker.ENABLE_QUIT_BUTTON, enableQuitButton);
+
+	}
+
+	void fromSaved(Bundle savedInstanceState) {
+		if (savedInstanceState != null) {
+			mOptOnlyOneItem = savedInstanceState.getBoolean(ExFilePicker.SET_ONLY_ONE_ITEM, false);
+
+			String[] array = savedInstanceState.getStringArray(ExFilePicker.SET_FILTER_EXCLUDE);
+			if (array != null) {
+				mOptFilterExclude = new ArrayList<>();
+				Collections.addAll(mOptFilterExclude, array);
+			} else {
+				mOptFilterExclude = null;
+			}
+
+			array = savedInstanceState.getStringArray(ExFilePicker.SET_FILTER_LISTED);
+
+			if (array != null) {
+				mOptFilterListed = new ArrayList<>();
+				Collections.addAll(mOptFilterListed, array);
+			} else {
+				mOptFilterListed = null;
+			}
+
+			mOptChoiceType = savedInstanceState.getInt(ExFilePicker.SET_CHOICE_TYPE, ExFilePicker.CHOICE_TYPE_ALL);
+
+			mOptSortType = savedInstanceState.getInt(ExFilePicker.SET_SORT_TYPE, ExFilePicker.SORT_NAME_ASC);
+
+			startPath = savedInstanceState.getString(ExFilePicker.SET_START_DIRECTORY);
+
+			disableNewFolderButton = savedInstanceState.getBoolean(ExFilePicker.DISABLE_NEW_FOLDER_BUTTON, false);
+			disableSortButton = savedInstanceState.getBoolean(ExFilePicker.DISABLE_SORT_BUTTON, false);
+			enableQuitButton = savedInstanceState.getBoolean(ExFilePicker.ENABLE_QUIT_BUTTON, false);
+		}
+	}
+
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -95,17 +170,34 @@ public class ExFilePickerActivity extends Activity implements OnLongClickListene
 		};
 
 		Intent intent = getIntent();
-		mOptOnlyOneItem = intent.getBooleanExtra(ExFilePicker.SET_ONLY_ONE_ITEM, false);
-		if (intent.hasExtra(ExFilePicker.SET_FILTER_EXCLUDE)) {
-			mOptFilterExclude = Arrays.asList(intent.getStringArrayExtra(ExFilePicker.SET_FILTER_EXCLUDE));
-		}
-		if (intent.hasExtra(ExFilePicker.SET_FILTER_LISTED)) {
-			mOptFilterListed = Arrays.asList(intent.getStringArrayExtra(ExFilePicker.SET_FILTER_LISTED));
-		}
-		mOptChoiceType = intent.getIntExtra(ExFilePicker.SET_CHOICE_TYPE, ExFilePicker.CHOICE_TYPE_ALL);
+		if(intent != null) {
+			mOptOnlyOneItem = intent.getBooleanExtra(ExFilePicker.SET_ONLY_ONE_ITEM, false);
+			if (intent.hasExtra(ExFilePicker.SET_FILTER_EXCLUDE)) {
+				mOptFilterExclude = Arrays.asList(intent.getStringArrayExtra(ExFilePicker.SET_FILTER_EXCLUDE));
+			} else {
+				mOptFilterExclude = null;
+			}
 
-		mOptSortType = intent.getIntExtra(ExFilePicker.SET_SORT_TYPE, ExFilePicker.SORT_NAME_ASC);
+			if (intent.hasExtra(ExFilePicker.SET_FILTER_LISTED)) {
+				mOptFilterListed = Arrays.asList(intent.getStringArrayExtra(ExFilePicker.SET_FILTER_LISTED));
+			} else {
+				mOptFilterListed = null;
+			}
 
+			mOptChoiceType = intent.getIntExtra(ExFilePicker.SET_CHOICE_TYPE, ExFilePicker.CHOICE_TYPE_ALL);
+
+			mOptSortType = intent.getIntExtra(ExFilePicker.SET_SORT_TYPE, ExFilePicker.SORT_NAME_ASC);
+
+			if(intent.hasExtra(ExFilePicker.SET_START_DIRECTORY)) {
+				startPath = intent.getStringExtra(ExFilePicker.SET_START_DIRECTORY);
+			}
+
+			disableNewFolderButton = !intent.getBooleanExtra(ExFilePicker.DISABLE_NEW_FOLDER_BUTTON, false);
+			disableSortButton = !intent.getBooleanExtra(ExFilePicker.DISABLE_SORT_BUTTON, false);
+			enableQuitButton = intent.getBooleanExtra(ExFilePicker.ENABLE_QUIT_BUTTON, false);
+		} else {
+			fromSaved(savedInstanceState);
+		}
 		mEmptyView = getLayoutInflater().inflate(R.layout.efp__empty, null);
 		addContentView(mEmptyView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
@@ -113,13 +205,12 @@ public class ExFilePickerActivity extends Activity implements OnLongClickListene
 		showSecondHeader(false);
 
 		File path = null;
-		if (intent.hasExtra(ExFilePicker.SET_START_DIRECTORY)) {
-			String startPath = intent.getStringExtra(ExFilePicker.SET_START_DIRECTORY);
-			if (startPath != null && startPath.length() > 0) {
-				File tmp = new File(startPath);
-				if (tmp.exists() && tmp.isDirectory()) path = tmp;
-			}
+
+		if (startPath != null && startPath.length() > 0) {
+			File tmp = new File(startPath);
+			if (tmp.exists() && tmp.isDirectory()) path = tmp;
 		}
+
 		if (path == null) {
 			path = new File("/");
 			if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) path = Environment.getExternalStorageDirectory();
@@ -225,7 +316,11 @@ public class ExFilePickerActivity extends Activity implements OnLongClickListene
 			cancel1.setOnClickListener(new OnClickListener() {
 				@Override
 				public void onClick(View v) {
-					complete(null);
+					if(mStandaloneMode) {
+						finish();
+					}else {
+						complete(null);
+					}
 				}
 			});
 			cancel1.setOnLongClickListener(this);
@@ -390,7 +485,7 @@ public class ExFilePickerActivity extends Activity implements OnLongClickListene
 		mHeaderTitle.setText(mCurrentDirectory.getName());
 	}
 
-	private void complete(ExFilePickerParcelObject object) {
+	protected void complete(ExFilePickerParcelObject object) {
 		if (object == null) {
 			String path = mCurrentDirectory.getAbsolutePath();
 			if (!path.endsWith("/")) path += "/";
